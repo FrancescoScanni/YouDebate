@@ -5,7 +5,7 @@ SET UP -> Win Powershell/Git Bash
 
 2. npm install (installare l'ultima versione di Node.js)
 
-3. npm run build 
+3. npm run build    
 
 4. cp .env.example .env (basato su .env.example standard di laravel)
 
