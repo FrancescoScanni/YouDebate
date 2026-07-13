@@ -1,9 +1,18 @@
+FROM node:20-alpine AS assets
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM composer:2 AS vendor
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --ignore-platform-reqs
+
 FROM php:8.3-apache
-
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip git curl \
+    unzip git curl libzip-dev \
     && docker-php-ext-install pdo pdo_mysql mysqli bcmath \
     && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/* \
@@ -12,6 +21,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /var/www/html
 COPY . .
-RUN chown -R www-data:www-data /var/www/html
+COPY --from=vendor /app/vendor ./vendor
+COPY --from=assets /app/public/build ./public/build
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-CMD sh -c "composer install --no-interaction && php artisan migrate --force 2>/dev/null; apache2-foreground"
+RUN composer dump-autoload --optimize \
+    && chown -R www-data:www-data /var/www/html
+
+EXPOSE 10000
+
+CMD sh -c "sed -i \"s/Listen 80/Listen \${PORT:-10000}/\" /etc/apache2/ports.conf \
+    && sed -i \"s/:80>/:\${PORT:-10000}>/\" /etc/apache2/sites-available/000-default.conf \
+    && php artisan migrate --force \
+    && apache2-foreground"
